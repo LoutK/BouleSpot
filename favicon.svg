@@ -1,0 +1,14 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- background -->
+  <rect width="32" height="32" rx="6" fill="#FFFDF5"/>
+  <!-- boule hard shadow -->
+  <circle cx="16" cy="17" r="11" fill="#1E293B"/>
+  <!-- boule -->
+  <circle cx="14" cy="15" r="11" fill="#8B5CF6" stroke="#1E293B" stroke-width="2"/>
+  <!-- shine -->
+  <circle cx="10" cy="11" r="3" fill="white" opacity="0.45"/>
+  <!-- cochonnet shadow -->
+  <circle cx="27" cy="27" r="5" fill="#1E293B"/>
+  <!-- cochonnet -->
+  <circle cx="25" cy="25" r="5" fill="#FBBF24" stroke="#1E293B" stroke-width="2"/>
+</svg>

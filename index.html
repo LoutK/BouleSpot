@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BouleSpot</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay">
+    <div class="loader-card">
+      <div class="spinner">
+        <div class="spinner-dot"></div>
+        <div class="spinner-dot"></div>
+        <div class="spinner-dot"></div>
+      </div>
+      <p class="loader-title">BouleSpot</p>
+      <p class="loader-sub">Boulesbanen ophalen…</p>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon-wrap">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <!-- boule hard shadow -->
+            <circle cx="15" cy="16" r="10" fill="#1E293B"/>
+            <!-- boule -->
+            <circle cx="13" cy="14" r="10" fill="#8B5CF6" stroke="#1E293B" stroke-width="2"/>
+            <!-- shine -->
+            <circle cx="9"  cy="10" r="2.5" fill="white" opacity="0.45"/>
+            <!-- cochonnet shadow -->
+            <circle cx="23" cy="23" r="4"  fill="#1E293B"/>
+            <!-- cochonnet -->
+            <circle cx="21" cy="21" r="4"  fill="#FBBF24" stroke="#1E293B" stroke-width="2"/>
+          </svg>
+        </div>
+        <span class="logo-text">BouleSpot</span>
+      </div>
+      <span id="meta"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-card">
+        <div class="sidebar-card-icon">📍</div>
+        <h2>Baan toevoegen</h2>
+        <ol class="instructions">
+          <li>Zoom in op de locatie van de baan.</li>
+          <li>Klik op de exacte plek op de kaart.</li>
+          <li>Vul de naam in het popup-formulier in.</li>
+          <li>Geef optioneel een rating en sla de locatie op.</li>
+        </ol>
+      </div>
+
+      <div id="status-bar" hidden>
+        <span id="status"></span>
+      </div>
+
+      <div class="sidebar-squiggle" aria-hidden="true">
+        <svg width="100%" height="40" viewBox="0 0 248 40" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0,20 Q31,0 62,20 Q93,40 124,20 Q155,0 186,20 Q217,40 248,20" stroke="#8B5CF6" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </aside>
+
+    <!-- Map -->
+    <section id="map" aria-label="Kaart met jeu de boulesbanen"></section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
