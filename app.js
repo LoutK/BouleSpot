@@ -4,6 +4,20 @@ const SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY || "";
 const supabaseClient = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
+const sidebarHelpEl = document.querySelector(".sidebar-help");
+
+function applySidebarHelpMode(isMobile) {
+  if (!sidebarHelpEl) return;
+  sidebarHelpEl.open = !isMobile;
+}
+
+const mobileSidebarQuery = window.matchMedia("(max-width: 700px)");
+applySidebarHelpMode(mobileSidebarQuery.matches);
+if (typeof mobileSidebarQuery.addEventListener === "function") {
+  mobileSidebarQuery.addEventListener("change", (event) => applySidebarHelpMode(event.matches));
+} else if (typeof mobileSidebarQuery.addListener === "function") {
+  mobileSidebarQuery.addListener((event) => applySidebarHelpMode(event.matches));
+}
 
 const map = L.map("map", { zoomControl: true }).setView([52.1326, 5.2913], 7);
 const markerCluster = L.markerClusterGroup({ disableClusteringAtZoom: 14 });

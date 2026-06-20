@@ -55,16 +55,19 @@
   <main>
     <!-- Sidebar -->
     <aside id="sidebar">
-      <div class="sidebar-card">
-        <div class="sidebar-card-icon">📍</div>
-        <h2>Baan toevoegen</h2>
-        <ol class="instructions">
-          <li>Zoom in op de locatie van de baan.</li>
-          <li>Klik op de exacte plek op de kaart.</li>
-          <li>Vul de naam in het popup-formulier in.</li>
-          <li>Geef optioneel een rating en sla de locatie op.</li>
-        </ol>
-      </div>
+      <details class="sidebar-help" open>
+        <summary class="sidebar-help-toggle">Baan toevoegen</summary>
+        <div class="sidebar-card">
+          <div class="sidebar-card-icon">📍</div>
+          <h2>Baan toevoegen</h2>
+          <ol class="instructions">
+            <li>Zoom in op de locatie van de baan.</li>
+            <li>Klik op de exacte plek op de kaart.</li>
+            <li>Vul de naam in het popup-formulier in.</li>
+            <li>Geef optioneel een rating en sla de locatie op.</li>
+          </ol>
+        </div>
+      </details>
 
       <div id="status-bar" hidden>
         <span id="status"></span>
