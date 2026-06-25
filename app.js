@@ -22,6 +22,7 @@ if (typeof mobileSidebarQuery.addEventListener === "function") {
 const map = L.map("map", { zoomControl: true }).setView([52.1326, 5.2913], 7);
 const markerCluster = L.markerClusterGroup({ disableClusteringAtZoom: 14 });
 const markersById = new Map();
+let userLocationMarker = null;
 
 // Basemaps
 const streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -81,6 +82,30 @@ const LayerToggleControl = L.Control.extend({
 });
 new LayerToggleControl().addTo(map);
 
+// ── Locate me control (below zoom buttons) ───────────────────────────────────
+const LocateControl = L.Control.extend({
+  options: { position: "topleft" },
+  onAdd(mapInstance) {
+    const btn = L.DomUtil.create("button", "locate-control");
+    btn.type = "button";
+    btn.title = "Zoom naar mijn locatie";
+    btn.setAttribute("aria-label", "Zoom naar mijn locatie");
+    btn.innerHTML = '<span class="locate-control-icon">◎</span><span class="locate-control-text">Mijn locatie</span>';
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.disableScrollPropagation(btn);
+    L.DomEvent.on(btn, "click", () => {
+      mapInstance.locate({
+        setView: true,
+        maxZoom: 15,
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+    });
+    return btn;
+  },
+});
+new LocateControl().addTo(map);
+
 const statusEl = document.getElementById("status");
 const metaEl = document.getElementById("meta");
 
@@ -112,6 +137,25 @@ function setStatus(message, isError = false) {
   bar.hidden = !message;
   bar.classList.toggle("error", isError);
 }
+
+map.on("locationfound", (event) => {
+  if (userLocationMarker) {
+    userLocationMarker.setLatLng(event.latlng);
+  } else {
+    userLocationMarker = L.circleMarker(event.latlng, {
+      radius: 8,
+      color: "#1E293B",
+      weight: 2,
+      fillColor: "#34D399",
+      fillOpacity: 0.95,
+    }).addTo(map);
+  }
+  setStatus("Je locatie is gevonden.");
+});
+
+map.on("locationerror", (event) => {
+  setStatus(`Locatie ophalen mislukt: ${event.message}`, true);
+});
 
 function updateMeta() {
   metaEl.textContent =
