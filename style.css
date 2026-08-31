@@ -365,6 +365,15 @@ main {
 /* ── Map ───────────────────────────────────────────────────────────────────── */
 #map { width: 100%; height: 100%; }
 
+.boule-marker {
+  background: transparent;
+  border: none;
+}
+.boule-marker svg {
+  display: block;
+  filter: drop-shadow(0 2px 2px rgba(30, 41, 59, 0.35));
+}
+
 /* ── Layer toggle (Leaflet control) ───────────────────────────────────────── */
 .layer-toggle {
   width: 70px;

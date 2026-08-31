@@ -24,6 +24,20 @@ const markerCluster = L.markerClusterGroup({ disableClusteringAtZoom: 14 });
 const markersById = new Map();
 let userLocationMarker = null;
 
+// ── Custom boule-shaped marker icon (matches header logo) ────────────────────
+const bouleIcon = L.divIcon({
+  className: "boule-marker",
+  html: `
+    <svg width="34" height="42" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17 41C17 41 30 26.5 30 16.5C30 8.49 24.28 2 17 2C9.72 2 4 8.49 4 16.5C4 26.5 17 41 17 41Z" fill="#8B5CF6" stroke="#1E293B" stroke-width="2.2"/>
+      <circle cx="13" cy="13" r="3" fill="white" opacity="0.45"/>
+    </svg>
+  `,
+  iconSize: [34, 42],
+  iconAnchor: [17, 40],
+  popupAnchor: [0, -36],
+});
+
 // Basemaps
 const streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -276,7 +290,7 @@ function ensureMarker(location) {
     existing.setPopupContent(buildPopupContent(location));
     return;
   }
-  const marker = L.marker([location.lat, location.lon], { title: location.name });
+  const marker = L.marker([location.lat, location.lon], { title: location.name, icon: bouleIcon });
   marker.locationRef = location;
   marker.bindPopup(buildPopupContent(location));
   markersById.set(location.id, marker);
