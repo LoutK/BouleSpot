@@ -290,12 +290,34 @@ function refreshAllPopups() {
 }
 
 let searchResultMarker = null;
+let searchAbortController = null;
+let searchSuggestions = [];
+let searchActiveIndex = -1;
 
-async function geocodeSearch(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=nl,be&q=${encodeURIComponent(query)}`;
-  const response = await fetch(url, { headers: { "Accept-Language": "nl" } });
+async function geocodeSearch(query, limit = 1) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${limit}&countrycodes=nl,be&accept-language=nl&q=${encodeURIComponent(query)}`;
+  const response = await fetch(url);
   if (!response.ok) throw new Error("Geocoding-service niet bereikbaar.");
   return response.json();
+}
+
+function panToResult(result) {
+  const { lat, lon, display_name } = result;
+  const latlng = [Number(lat), Number(lon)];
+
+  if (searchResultMarker) {
+    map.removeLayer(searchResultMarker);
+  }
+  searchResultMarker = L.circleMarker(latlng, {
+    radius: 9,
+    color: "#1E293B",
+    weight: 2,
+    fillColor: "#8B5CF6",
+    fillOpacity: 0.9,
+  }).addTo(map);
+
+  map.setView(latlng, 14);
+  setStatus(`Locatie gevonden: ${display_name}`);
 }
 
 async function goToSearchResult(query) {
@@ -303,27 +325,12 @@ async function goToSearchResult(query) {
   if (!trimmed) return;
   setStatus(`Zoeken naar "${trimmed}"…`);
   try {
-    const results = await geocodeSearch(trimmed);
+    const results = await geocodeSearch(trimmed, 1);
     if (!results || results.length === 0) {
       setStatus(`Geen locatie gevonden voor "${trimmed}".`, true);
       return;
     }
-    const { lat, lon, display_name } = results[0];
-    const latlng = [Number(lat), Number(lon)];
-
-    if (searchResultMarker) {
-      map.removeLayer(searchResultMarker);
-    }
-    searchResultMarker = L.circleMarker(latlng, {
-      radius: 9,
-      color: "#1E293B",
-      weight: 2,
-      fillColor: "#8B5CF6",
-      fillOpacity: 0.9,
-    }).addTo(map);
-
-    map.setView(latlng, 14);
-    setStatus(`Locatie gevonden: ${display_name}`);
+    panToResult(results[0]);
   } catch (error) {
     setStatus("Zoeken mislukt. Probeer het opnieuw.", true);
   }
@@ -331,9 +338,98 @@ async function goToSearchResult(query) {
 
 const searchFormEl = document.getElementById("search-form");
 const searchInputEl = document.getElementById("search-input");
+const searchSuggestionsEl = document.getElementById("search-suggestions");
+
+function renderSearchSuggestions() {
+  if (!searchSuggestionsEl) return;
+  if (searchSuggestions.length === 0) {
+    searchSuggestionsEl.hidden = true;
+    searchSuggestionsEl.innerHTML = "";
+    return;
+  }
+  searchSuggestionsEl.innerHTML = searchSuggestions
+    .map((result, index) => `
+      <li role="option" data-index="${index}" class="${index === searchActiveIndex ? "active" : ""}">
+        ${escapeHtml(result.display_name)}
+      </li>
+    `)
+    .join("");
+  searchSuggestionsEl.hidden = false;
+}
+
+function clearSearchSuggestions() {
+  searchSuggestions = [];
+  searchActiveIndex = -1;
+  renderSearchSuggestions();
+}
+
+async function fetchSearchSuggestions(query) {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    clearSearchSuggestions();
+    return;
+  }
+  if (searchAbortController) searchAbortController.abort();
+  searchAbortController = new AbortController();
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=nl,be&accept-language=nl&q=${encodeURIComponent(trimmed)}`;
+    const response = await fetch(url, { signal: searchAbortController.signal });
+    if (!response.ok) return;
+    const results = await response.json();
+    searchSuggestions = results || [];
+    searchActiveIndex = -1;
+    renderSearchSuggestions();
+  } catch (error) {
+    if (error.name !== "AbortError") clearSearchSuggestions();
+  }
+}
+
 if (searchFormEl && searchInputEl) {
+  let debounceTimer = null;
+  searchInputEl.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => fetchSearchSuggestions(searchInputEl.value), 300);
+  });
+
+  searchInputEl.addEventListener("keydown", (event) => {
+    if (searchSuggestions.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      searchActiveIndex = (searchActiveIndex + 1) % searchSuggestions.length;
+      renderSearchSuggestions();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      searchActiveIndex = (searchActiveIndex - 1 + searchSuggestions.length) % searchSuggestions.length;
+      renderSearchSuggestions();
+    } else if (event.key === "Escape") {
+      clearSearchSuggestions();
+    } else if (event.key === "Enter" && searchActiveIndex >= 0) {
+      event.preventDefault();
+      const chosen = searchSuggestions[searchActiveIndex];
+      searchInputEl.value = chosen.display_name;
+      clearSearchSuggestions();
+      panToResult(chosen);
+    }
+  });
+
+  searchSuggestionsEl?.addEventListener("click", (event) => {
+    const item = event.target.closest("li[data-index]");
+    if (!item) return;
+    const chosen = searchSuggestions[Number(item.dataset.index)];
+    if (!chosen) return;
+    searchInputEl.value = chosen.display_name;
+    clearSearchSuggestions();
+    panToResult(chosen);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!searchFormEl.contains(event.target)) clearSearchSuggestions();
+  });
+
   searchFormEl.addEventListener("submit", (event) => {
     event.preventDefault();
+    clearSearchSuggestions();
     goToSearchResult(searchInputEl.value);
   });
 }
