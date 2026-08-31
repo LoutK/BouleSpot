@@ -286,21 +286,18 @@ function buildPopupContent(location) {
 function ensureMarker(location) {
   const existing = markersById.get(location.id);
   if (existing) {
+    // Just update the underlying data; popup content is generated lazily
+    // (see bindPopup below) so we don't need to rebuild any HTML here.
     existing.locationRef = location;
-    existing.setPopupContent(buildPopupContent(location));
     return;
   }
   const marker = L.marker([location.lat, location.lon], { title: location.name, icon: bouleIcon });
   marker.locationRef = location;
-  marker.bindPopup(buildPopupContent(location));
+  // Pass a function instead of a string: Leaflet calls this only when the
+  // popup is actually opened, so we avoid building HTML for all markers.
+  marker.bindPopup(() => buildPopupContent(marker.locationRef));
   markersById.set(location.id, marker);
   markerCluster.addLayer(marker);
-}
-
-function refreshAllPopups() {
-  for (const marker of markersById.values()) {
-    marker.setPopupContent(buildPopupContent(marker.locationRef));
-  }
 }
 
 let searchResultMarker = null;
@@ -484,18 +481,39 @@ function buildAddLocationPopup(latlng) {
 async function loadAllLocations() {
   if (!supabaseClient) throw new Error("Supabase niet geconfigureerd.");
   const PAGE = 1000;
-  let page = 0;
-  let allLocations = [];
-  while (true) {
+
+  const fetchPage = async (page) => {
     const { data, error } = await supabaseClient
       .from("user_locations")
       .select("id,name,lat,lon,source")
       .order("created_at", { ascending: true })
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) throw error;
-    allLocations = allLocations.concat(data || []);
-    if (!data || data.length < PAGE) break;
-    page++;
+    return data || [];
+  };
+
+  // Fetch the first page to learn how many rows exist in total, then fire
+  // off every remaining page in parallel instead of waiting for each one
+  // sequentially (32 sequential round-trips could take many seconds).
+  const firstPage = await fetchPage(0);
+  if (firstPage.length < PAGE) return firstPage;
+
+  let pageIndex = 1;
+  let allLocations = firstPage;
+  while (true) {
+    const remainingPages = [];
+    const BATCH = 8; // fetch a handful of pages in parallel per round
+    for (let i = 0; i < BATCH; i++) {
+      remainingPages.push(fetchPage(pageIndex + i));
+    }
+    const results = await Promise.all(remainingPages);
+    let hitShortPage = false;
+    for (const data of results) {
+      allLocations = allLocations.concat(data);
+      if (data.length < PAGE) hitShortPage = true;
+    }
+    if (hitShortPage) break;
+    pageIndex += BATCH;
   }
   return allLocations;
 }
@@ -515,7 +533,6 @@ async function syncSharedData() {
 
   ratings = aggregateRatings(ratingsResponse.data || []);
   allLocations.map(normalizeLocation).forEach(ensureMarker);
-  refreshAllPopups();
 
   totalLocations = allLocations.length;
   userAddedCount = allLocations.filter(l => l.source === "Gebruiker").length;
@@ -593,7 +610,13 @@ async function submitRating(locationId, locationScore, atmosphereScore) {
   }
 
   applyLocalRating(locationId, locationScore, atmosphereScore);
-  refreshAllPopups();
+  // Only refresh the popup for the location that was just rated (it's the
+  // only one whose displayed content could have changed) instead of
+  // rebuilding HTML for every marker on the map.
+  const ratedMarker = markersById.get(locationId);
+  if (ratedMarker && ratedMarker.isPopupOpen()) {
+    ratedMarker.setPopupContent(buildPopupContent(ratedMarker.locationRef));
+  }
   setStatus("Rating opgeslagen.");
 }
 
@@ -676,9 +699,11 @@ async function bootstrap() {
   setStatus("");
   openSharedLocationFromUrl();
 
+  // Full resync doesn't need to happen every 30s — locations/ratings rarely
+  // change that fast, and a full resync rebuilds data for 30k+ markers.
   window.setInterval(async () => {
     try { await syncSharedData(); } catch (e) { setStatus(`Sync mislukt: ${e.message}`, true); }
-  }, 30000);
+  }, 180000);
 }
 
 bootstrap().catch((error) => {
