@@ -480,6 +480,32 @@ main {
 }
 .popup-rating strong { color: var(--accent); font-weight: 700; }
 
+.popup-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.popup-action-btn {
+  flex: 1 1 0;
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: .75rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1.5px solid var(--fg);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  cursor: pointer;
+  transition: var(--bounce);
+}
+.popup-action-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0px var(--fg);
+}
+
 .popup-form, .map-add-form {
   display: grid; gap: 6px;
   border-top: 2px solid var(--border);

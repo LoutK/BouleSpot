@@ -230,6 +230,7 @@ function ratingText(avg, votes) {
 function buildPopupContent(location) {
   const summary = getRatingSummary(location.id);
   const source = location.source ? `<div class="popup-source">${escapeHtml(location.source)}</div>` : "";
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lon}`;
 
   return `
     <div class="popup-inner">
@@ -238,6 +239,10 @@ function buildPopupContent(location) {
       <div class="popup-rating">
         <div><strong>Locatie:</strong> ${ratingText(summary.locationAverage, summary.locationVotes)}</div>
         <div><strong>Sfeer:</strong> ${ratingText(summary.atmosphereAverage, summary.atmosphereVotes)}</div>
+      </div>
+      <div class="popup-actions">
+        <a class="popup-action-btn" href="${directionsUrl}" target="_blank" rel="noopener noreferrer">🧭 Route</a>
+        <button type="button" class="popup-action-btn popup-share-btn" data-location-id="${escapeHtml(location.id)}">🔗 Delen</button>
       </div>
       <form class="popup-form" data-location-id="${escapeHtml(location.id)}">
         <label>Score locatie</label>
@@ -518,6 +523,36 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
+document.addEventListener("click", async (event) => {
+  const shareBtn = event.target.closest(".popup-share-btn");
+  if (!shareBtn) return;
+  const locationId = shareBtn.dataset.locationId;
+  const shareUrl = new URL(window.location.href);
+  shareUrl.searchParams.set("baan", locationId);
+  shareUrl.hash = "";
+
+  const originalLabel = shareBtn.textContent;
+  try {
+    await navigator.clipboard.writeText(shareUrl.toString());
+    shareBtn.textContent = "✅ Gekopieerd!";
+  } catch (error) {
+    shareBtn.textContent = "⚠️ Kopiëren mislukt";
+  }
+  setTimeout(() => {
+    shareBtn.textContent = originalLabel;
+  }, 2000);
+});
+
+function openSharedLocationFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const sharedId = params.get("baan");
+  if (!sharedId) return;
+  const marker = markersById.get(sharedId);
+  if (!marker) return;
+  map.setView(marker.getLatLng(), 16);
+  marker.openPopup();
+}
+
 async function bootstrap() {
   if (!supabaseClient) {
     document.getElementById("loading-overlay").classList.add("hidden");
@@ -529,6 +564,7 @@ async function bootstrap() {
   await syncSharedData();
   document.getElementById("loading-overlay").classList.add("hidden");
   setStatus("");
+  openSharedLocationFromUrl();
 
   window.setInterval(async () => {
     try { await syncSharedData(); } catch (e) { setStatus(`Sync mislukt: ${e.message}`, true); }
