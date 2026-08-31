@@ -1,0 +1,17 @@
+# BouleSpot
+
+> BouleSpot is een gratis, interactieve kaart met duizenden jeu de boules- en petanquebanen door heel Europa, gebaseerd op OpenStreetMap-data.
+
+BouleSpot helpt spelers van jeu de boules (petanque) om een boulesbaan te vinden bij hun locatie, in hun eigen stad of tijdens het reizen door Europa. De kaart toont banen op basis van OpenStreetMap-data, aangevuld door de community.
+
+## Belangrijkste functies
+- Interactieve kaart met duizenden jeu de boules- en petanquebanen in Europa.
+- Zoekfunctie om te pannen naar een stad, straat of dorp (adres-zoeken, geen account nodig).
+- Beoordelingen van andere spelers per baan (locatie en sfeer).
+- Route plannen naar een baan via Google Maps.
+- Een baan delen via een link.
+- Zelf een ontbrekende baan toevoegen aan de kaart.
+- Volledig gratis, geen account of registratie vereist.
+
+## Belangrijkste pagina
+- [BouleSpot](https://loutk.github.io/BouleSpot/): de interactieve kaart en hoofdfunctionaliteit van de website.
