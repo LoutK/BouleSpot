@@ -284,6 +284,55 @@ function refreshAllPopups() {
   }
 }
 
+let searchResultMarker = null;
+
+async function geocodeSearch(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=nl,be&q=${encodeURIComponent(query)}`;
+  const response = await fetch(url, { headers: { "Accept-Language": "nl" } });
+  if (!response.ok) throw new Error("Geocoding-service niet bereikbaar.");
+  return response.json();
+}
+
+async function goToSearchResult(query) {
+  const trimmed = query.trim();
+  if (!trimmed) return;
+  setStatus(`Zoeken naar "${trimmed}"…`);
+  try {
+    const results = await geocodeSearch(trimmed);
+    if (!results || results.length === 0) {
+      setStatus(`Geen locatie gevonden voor "${trimmed}".`, true);
+      return;
+    }
+    const { lat, lon, display_name } = results[0];
+    const latlng = [Number(lat), Number(lon)];
+
+    if (searchResultMarker) {
+      map.removeLayer(searchResultMarker);
+    }
+    searchResultMarker = L.circleMarker(latlng, {
+      radius: 9,
+      color: "#1E293B",
+      weight: 2,
+      fillColor: "#8B5CF6",
+      fillOpacity: 0.9,
+    }).addTo(map);
+
+    map.setView(latlng, 14);
+    setStatus(`Locatie gevonden: ${display_name}`);
+  } catch (error) {
+    setStatus("Zoeken mislukt. Probeer het opnieuw.", true);
+  }
+}
+
+const searchFormEl = document.getElementById("search-form");
+const searchInputEl = document.getElementById("search-input");
+if (searchFormEl && searchInputEl) {
+  searchFormEl.addEventListener("submit", (event) => {
+    event.preventDefault();
+    goToSearchResult(searchInputEl.value);
+  });
+}
+
 function buildAddLocationPopup(latlng) {
   return `
     <div class="popup-inner">
