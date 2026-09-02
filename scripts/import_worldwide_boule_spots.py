@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import requests
+from shapely.geometry import Point, box, shape
+from shapely.ops import unary_union
+from shapely.prepared import prep
 
 OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
@@ -17,16 +20,16 @@ OVERPASS_URLS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 SPORTS = ("boules", "petanque", "boule")
-
-# Europe is intentionally omitted because it has already been imported.
-# These bounds are limited to Europe itself; North Africa, Turkey and the
-# Caucasus remain eligible for import.
-EUROPE_EXCLUSION = (35, -25, 72, 45)
+IMPORTER_VERSION = 2
+NATURAL_EARTH_URL = (
+    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/"
+    "geojson/ne_110m_admin_0_countries.geojson"
+)
 PRIORITY_REGIONS = (
     (20, -130, 55, -55),  # North America
     (-60, -85, 15, -30),  # South America
     (-35, 10, 38, 55),    # Africa
-    (5, 45, 55, 150),     # Asia, excluding Europe
+    (5, 45, 55, 150),     # Asia
     (-48, 110, -10, 180), # Australia and New Zealand
 )
 
@@ -48,12 +51,30 @@ def intersects(tile: tuple[int, int, int, int], bounds: tuple[int, int, int, int
     return south < max_lat and north > min_lat and west < max_lon and east > min_lon
 
 
-def build_tiles(tile_size: int) -> list[tuple[int, int, int, int]]:
+def load_land_masks(session: requests.Session) -> tuple[Any, Any]:
+    response = session.get(NATURAL_EARTH_URL, timeout=60)
+    response.raise_for_status()
+    features = response.json()["features"]
+    non_europe = []
+    europe = []
+    for feature in features:
+        geometry = shape(feature["geometry"])
+        continent = feature["properties"].get("CONTINENT")
+        if continent == "Antarctica":
+            continue
+        if continent == "Europe":
+            europe.append(geometry)
+        else:
+            non_europe.append(geometry)
+    return prep(unary_union(non_europe)), prep(unary_union(europe))
+
+
+def build_tiles(tile_size: int, non_europe_land: Any) -> list[tuple[int, int, int, int]]:
     tiles: list[tuple[int, int, int, int]] = []
     for south in range(-90, 90, tile_size):
         for west in range(-180, 180, tile_size):
             tile = (south, west, min(south + tile_size, 90), min(west + tile_size, 180))
-            if not intersects(tile, EUROPE_EXCLUSION):
+            if non_europe_land.intersects(box(tile[1], tile[0], tile[3], tile[2])):
                 tiles.append(tile)
 
     priority_tiles = []
@@ -76,12 +97,14 @@ def build_query(tile: tuple[int, int, int, int]) -> str:
     return f"[out:json][timeout:120];({''.join(clauses)});out center tags;"
 
 
-def fetch_elements(session: requests.Session, tile: tuple[int, int, int, int]) -> list[dict[str, Any]]:
+def fetch_elements(tile: tuple[int, int, int, int]) -> list[dict[str, Any]]:
     query = build_query(tile)
     for attempt in range(1, 4):
         errors = []
         for url in OVERPASS_URLS:
             try:
+                session = requests.Session()
+                session.headers["User-Agent"] = "BouleSpot-OSM-Importer/2.0 (https://loutk.github.io/BouleSpot/)"
                 response = session.get(url, params={"data": query}, timeout=180)
                 response.raise_for_status()
                 payload = response.json()
@@ -97,7 +120,7 @@ def fetch_elements(session: requests.Session, tile: tuple[int, int, int, int]) -
     raise AssertionError("Unreachable")
 
 
-def normalize_rows(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def normalize_rows(elements: list[dict[str, Any]], europe_land: Any) -> list[dict[str, Any]]:
     rows_by_id = {}
     for element in elements:
         tags = element.get("tags", {})
@@ -111,6 +134,8 @@ def normalize_rows(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
             center = element.get("center", {})
             lat, lon = center.get("lat"), center.get("lon")
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        if europe_land.contains(Point(lon, lat)):
             continue
 
         location_id = f"osm-{element_type}-{element['id']}"
@@ -139,10 +164,16 @@ def insert_rows(session: requests.Session, url: str, key: str, rows: list[dict[s
 
 def load_state(path: Path, tile_size: int) -> dict[str, int]:
     if not path.exists():
-        return {"tile_size": tile_size, "next_tile": 0, "completed_tiles": 0, "candidates": 0}
+        return {
+            "importer_version": IMPORTER_VERSION,
+            "tile_size": tile_size,
+            "next_tile": 0,
+            "completed_tiles": 0,
+            "candidates": 0,
+        }
     state = json.loads(path.read_text(encoding="utf-8"))
-    if state.get("tile_size") != tile_size:
-        raise ValueError("State tile_size differs from this run.")
+    if state.get("importer_version") != IMPORTER_VERSION or state.get("tile_size") != tile_size:
+        raise ValueError("State belongs to a different importer version or tile size.")
     return state
 
 
@@ -151,24 +182,28 @@ def main() -> None:
     if args.max_tiles < 1:
         raise ValueError("--max-tiles must be at least 1.")
 
-    state = load_state(args.state_path, args.tile_size)
-    tiles = build_tiles(args.tile_size)
     session = requests.Session()
     session.headers["User-Agent"] = "BouleSpot-OSM-Importer/1.0 (https://loutk.github.io/BouleSpot/)"
+    non_europe_land, europe_land = load_land_masks(session)
+    state = load_state(args.state_path, args.tile_size)
+    tiles = build_tiles(args.tile_size, non_europe_land)
     processed = 0
 
     while state["next_tile"] < len(tiles) and processed < args.max_tiles:
-        tile = tiles[state["next_tile"]]
-        print(f"Tile {state['next_tile'] + 1}/{len(tiles)}: {tile}", flush=True)
-        rows = normalize_rows(fetch_elements(session, tile))
-        insert_rows(session, args.supabase_url, args.supabase_key, rows)
+        batch_tiles = tiles[state["next_tile"] : state["next_tile"] + min(3, args.max_tiles - processed)]
+        with ThreadPoolExecutor(max_workers=len(batch_tiles)) as executor:
+            batch_elements = list(executor.map(fetch_elements, batch_tiles))
 
-        state["next_tile"] += 1
-        state["completed_tiles"] += 1
-        state["candidates"] += len(rows)
-        args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-        print(f"  Imported {len(rows)} strict candidates.", flush=True)
-        processed += 1
+        for tile, elements in zip(batch_tiles, batch_elements):
+            print(f"Tile {state['next_tile'] + 1}/{len(tiles)}: {tile}", flush=True)
+            rows = normalize_rows(elements, europe_land)
+            insert_rows(session, args.supabase_url, args.supabase_key, rows)
+            state["next_tile"] += 1
+            state["completed_tiles"] += 1
+            state["candidates"] += len(rows)
+            args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+            print(f"  Imported {len(rows)} strict candidates.", flush=True)
+            processed += 1
         if processed < args.max_tiles and state["next_tile"] < len(tiles):
             time.sleep(args.delay_seconds)
 

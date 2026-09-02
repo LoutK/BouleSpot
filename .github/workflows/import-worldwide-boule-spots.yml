@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       max_tiles:
-        description: "Number of tiles to process (recommended: 25)"
+        description: "Number of land tiles to process (recommended: 100)"
         required: true
-        default: "25"
+        default: "100"
         type: string
 
 permissions:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   import:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install requests
+      - run: pip install requests shapely
 
       - name: Import strict OpenStreetMap boule pitches
         env:
