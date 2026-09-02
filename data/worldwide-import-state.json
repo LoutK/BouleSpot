@@ -1,9 +1,9 @@
 {
   "importer_version": 4,
   "tile_size": 10,
-  "next_tile": 170,
-  "completed_tiles": 168,
-  "candidates": 3232,
+  "next_tile": 175,
+  "completed_tiles": 173,
+  "candidates": 3234,
   "failed_tiles": [
     {
       "tile_number": 56,
