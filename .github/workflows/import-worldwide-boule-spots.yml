@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       max_tiles:
-        description: Number of tiles to process (recommended: 25)
+        description: "Number of tiles to process (recommended: 25)"
         required: true
         default: "25"
         type: string
