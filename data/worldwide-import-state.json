@@ -1,6 +1,6 @@
 {
   "tile_size": 2,
-  "next_tile": 0,
-  "completed_tiles": 0,
+  "next_tile": 25,
+  "completed_tiles": 25,
   "candidates": 0
 }
