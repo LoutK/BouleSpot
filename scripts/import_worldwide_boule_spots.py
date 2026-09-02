@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ OVERPASS_URLS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 SPORTS = ("boules", "petanque", "boule")
-IMPORTER_VERSION = 3
+IMPORTER_VERSION = 4
 NATURAL_EARTH_URL = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/"
     "geojson/ne_110m_admin_0_countries.geojson"
@@ -36,9 +37,9 @@ PRIORITY_REGIONS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-path", type=Path, required=True)
-    parser.add_argument("--max-tiles", type=int, default=25)
-    parser.add_argument("--tile-size", type=int, default=2)
-    parser.add_argument("--delay-seconds", type=int, default=12)
+    parser.add_argument("--max-tiles", type=int, default=30)
+    parser.add_argument("--tile-size", type=int, default=10)
+    parser.add_argument("--delay-seconds", type=int, default=2)
     parser.add_argument("--supabase-url", required=True)
     parser.add_argument("--supabase-key", required=True)
     return parser.parse_args()
@@ -103,7 +104,7 @@ def fetch_elements(tile: tuple[int, int, int, int]) -> list[dict[str, Any]]:
             try:
                 session = requests.Session()
                 session.headers["User-Agent"] = "BouleSpot-OSM-Importer/2.0 (https://loutk.github.io/BouleSpot/)"
-                response = session.get(url, params={"data": query}, timeout=180)
+                response = session.get(url, params={"data": query}, timeout=45)
                 response.raise_for_status()
                 payload = response.json()
                 timestamp = payload.get("osm3s", {}).get("timestamp_osm_base", "")
@@ -190,22 +191,27 @@ def main() -> None:
     processed = 0
 
     while state["next_tile"] < len(tiles) and processed < args.max_tiles:
-        tile = tiles[state["next_tile"]]
-        tile_number = state["next_tile"] + 1
-        print(f"Tile {tile_number}/{len(tiles)}: {tile}", flush=True)
-        try:
-            rows = normalize_rows(fetch_elements(tile), europe_land)
-            insert_rows(session, args.supabase_url, args.supabase_key, rows)
-            print(f"  Imported {len(rows)} strict candidates.", flush=True)
-            state["completed_tiles"] += 1
-            state["candidates"] += len(rows)
-        except RuntimeError as error:
-            print(f"  Deferred after retries: {error}", flush=True)
-            state["failed_tiles"].append({"tile_number": tile_number, "bounds": tile})
+        batch_size = min(2, args.max_tiles - processed)
+        batch_tiles = tiles[state["next_tile"] : state["next_tile"] + batch_size]
+        with ThreadPoolExecutor(max_workers=len(batch_tiles)) as executor:
+            futures = [(tile, executor.submit(fetch_elements, tile)) for tile in batch_tiles]
+            for tile, future in futures:
+                tile_number = state["next_tile"] + 1
+                print(f"Tile {tile_number}/{len(tiles)}: {tile}", flush=True)
+                try:
+                    elements = future.result()
+                    rows = normalize_rows(elements, europe_land)
+                    insert_rows(session, args.supabase_url, args.supabase_key, rows)
+                    print(f"  Imported {len(rows)} strict candidates.", flush=True)
+                    state["completed_tiles"] += 1
+                    state["candidates"] += len(rows)
+                except RuntimeError as error:
+                    print(f"  Deferred after retries: {error}", flush=True)
+                    state["failed_tiles"].append({"tile_number": tile_number, "bounds": tile})
 
-        state["next_tile"] += 1
-        args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-        processed += 1
+                state["next_tile"] += 1
+                args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+                processed += 1
         if processed < args.max_tiles and state["next_tile"] < len(tiles):
             time.sleep(args.delay_seconds)
 

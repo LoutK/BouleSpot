@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       max_tiles:
-        description: "Number of land tiles to process (recommended: 50)"
+        description: "Number of 10-degree land tiles to process (recommended: 30)"
         required: true
-        default: "50"
+        default: "30"
         type: string
 
 permissions:
