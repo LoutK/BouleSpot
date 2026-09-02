@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +19,7 @@ OVERPASS_URLS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 SPORTS = ("boules", "petanque", "boule")
-IMPORTER_VERSION = 2
+IMPORTER_VERSION = 3
 NATURAL_EARTH_URL = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/"
     "geojson/ne_110m_admin_0_countries.geojson"
@@ -90,9 +89,8 @@ def build_tiles(tile_size: int, non_europe_land: Any) -> list[tuple[int, int, in
 def build_query(tile: tuple[int, int, int, int]) -> str:
     south, west, north, east = tile
     clauses = [
-        f'{element_type}["leisure"="pitch"]["sport"="{sport}"]({south},{west},{north},{east});'
+        f'{element_type}["leisure"="pitch"]["sport"~"^(boules|petanque|boule)$"]({south},{west},{north},{east});'
         for element_type in ("node", "way", "relation")
-        for sport in SPORTS
     ]
     return f"[out:json][timeout:120];({''.join(clauses)});out center tags;"
 
@@ -162,7 +160,7 @@ def insert_rows(session: requests.Session, url: str, key: str, rows: list[dict[s
         response.raise_for_status()
 
 
-def load_state(path: Path, tile_size: int) -> dict[str, int]:
+def load_state(path: Path, tile_size: int) -> dict[str, Any]:
     if not path.exists():
         return {
             "importer_version": IMPORTER_VERSION,
@@ -170,10 +168,12 @@ def load_state(path: Path, tile_size: int) -> dict[str, int]:
             "next_tile": 0,
             "completed_tiles": 0,
             "candidates": 0,
+            "failed_tiles": [],
         }
     state = json.loads(path.read_text(encoding="utf-8"))
     if state.get("importer_version") != IMPORTER_VERSION or state.get("tile_size") != tile_size:
         raise ValueError("State belongs to a different importer version or tile size.")
+    state.setdefault("failed_tiles", [])
     return state
 
 
@@ -190,24 +190,30 @@ def main() -> None:
     processed = 0
 
     while state["next_tile"] < len(tiles) and processed < args.max_tiles:
-        batch_tiles = tiles[state["next_tile"] : state["next_tile"] + min(3, args.max_tiles - processed)]
-        with ThreadPoolExecutor(max_workers=len(batch_tiles)) as executor:
-            batch_elements = list(executor.map(fetch_elements, batch_tiles))
-
-        for tile, elements in zip(batch_tiles, batch_elements):
-            print(f"Tile {state['next_tile'] + 1}/{len(tiles)}: {tile}", flush=True)
-            rows = normalize_rows(elements, europe_land)
+        tile = tiles[state["next_tile"]]
+        tile_number = state["next_tile"] + 1
+        print(f"Tile {tile_number}/{len(tiles)}: {tile}", flush=True)
+        try:
+            rows = normalize_rows(fetch_elements(tile), europe_land)
             insert_rows(session, args.supabase_url, args.supabase_key, rows)
-            state["next_tile"] += 1
+            print(f"  Imported {len(rows)} strict candidates.", flush=True)
             state["completed_tiles"] += 1
             state["candidates"] += len(rows)
-            args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-            print(f"  Imported {len(rows)} strict candidates.", flush=True)
-            processed += 1
+        except RuntimeError as error:
+            print(f"  Deferred after retries: {error}", flush=True)
+            state["failed_tiles"].append({"tile_number": tile_number, "bounds": tile})
+
+        state["next_tile"] += 1
+        args.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        processed += 1
         if processed < args.max_tiles and state["next_tile"] < len(tiles):
             time.sleep(args.delay_seconds)
 
-    print(f"Finished {processed} tiles; total progress: {state['completed_tiles']}/{len(tiles)}.", flush=True)
+    print(
+        f"Finished {processed} tiles; total successful: {state['completed_tiles']}/{len(tiles)}; "
+        f"deferred: {len(state['failed_tiles'])}.",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
