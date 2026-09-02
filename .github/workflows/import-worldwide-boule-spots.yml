@@ -1,0 +1,53 @@
+name: Import worldwide boule spots
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_tiles:
+        description: Number of tiles to process (recommended: 25)
+        required: true
+        default: "25"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: worldwide-boule-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install requests
+
+      - name: Import strict OpenStreetMap boule pitches
+        env:
+          SUPABASE_URL: https://wcowekncesjckmooacyf.supabase.co
+          SUPABASE_KEY: sb_publishable_G42h5ZB_pITr3zyW-tsljg_5efcFEUS
+        run: |
+          python scripts/import_worldwide_boule_spots.py \
+            --state-path data/worldwide-import-state.json \
+            --max-tiles "${{ inputs.max_tiles }}" \
+            --supabase-url "$SUPABASE_URL" \
+            --supabase-key "$SUPABASE_KEY"
+
+      - name: Save import progress
+        run: |
+          if git diff --quiet -- data/worldwide-import-state.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/worldwide-import-state.json
+          git commit -m "chore: update worldwide import progress"
+          git push
