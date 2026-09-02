@@ -11,13 +11,24 @@ from typing import Any
 
 import requests
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+)
 SPORTS = ("boules", "petanque", "boule")
 
 # Europe is intentionally omitted because it has already been imported.
 # These bounds are limited to Europe itself; North Africa, Turkey and the
 # Caucasus remain eligible for import.
 EUROPE_EXCLUSION = (35, -25, 72, 45)
+PRIORITY_REGIONS = (
+    (20, -130, 55, -55),  # North America
+    (-60, -85, 15, -30),  # South America
+    (-35, 10, 38, 55),    # Africa
+    (5, 45, 55, 150),     # Asia, excluding Europe
+    (-48, 110, -10, 180), # Australia and New Zealand
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,13 +49,21 @@ def intersects(tile: tuple[int, int, int, int], bounds: tuple[int, int, int, int
 
 
 def build_tiles(tile_size: int) -> list[tuple[int, int, int, int]]:
-    tiles = []
+    tiles: list[tuple[int, int, int, int]] = []
     for south in range(-90, 90, tile_size):
         for west in range(-180, 180, tile_size):
             tile = (south, west, min(south + tile_size, 90), min(west + tile_size, 180))
             if not intersects(tile, EUROPE_EXCLUSION):
                 tiles.append(tile)
-    return tiles
+
+    priority_tiles = []
+    priority_keys = set()
+    for region in PRIORITY_REGIONS:
+        for tile in tiles:
+            if intersects(tile, region) and tile not in priority_keys:
+                priority_tiles.append(tile)
+                priority_keys.add(tile)
+    return priority_tiles + [tile for tile in tiles if tile not in priority_keys]
 
 
 def build_query(tile: tuple[int, int, int, int]) -> str:
@@ -58,19 +77,23 @@ def build_query(tile: tuple[int, int, int, int]) -> str:
 
 
 def fetch_elements(session: requests.Session, tile: tuple[int, int, int, int]) -> list[dict[str, Any]]:
+    query = build_query(tile)
     for attempt in range(1, 4):
-        try:
-            response = session.post(OVERPASS_URL, data={"data": build_query(tile)}, timeout=180)
-            response.raise_for_status()
-            payload = response.json()
-            timestamp = payload.get("osm3s", {}).get("timestamp_osm_base", "")
-            if not isinstance(timestamp, str) or len(timestamp) < 20 or "T" not in timestamp:
-                raise ValueError("Overpass returned no valid data timestamp.")
-            return payload.get("elements", [])
-        except (requests.RequestException, ValueError, json.JSONDecodeError) as error:
-            if attempt == 3:
-                raise RuntimeError(f"Overpass request failed for {tile}: {error}") from error
-            time.sleep(attempt * 30)
+        errors = []
+        for url in OVERPASS_URLS:
+            try:
+                response = session.get(url, params={"data": query}, timeout=180)
+                response.raise_for_status()
+                payload = response.json()
+                timestamp = payload.get("osm3s", {}).get("timestamp_osm_base", "")
+                if not isinstance(timestamp, str) or len(timestamp) < 20 or "T" not in timestamp:
+                    raise ValueError("Overpass returned no valid data timestamp.")
+                return payload.get("elements", [])
+            except (requests.RequestException, ValueError, json.JSONDecodeError) as error:
+                errors.append(f"{url}: {error}")
+        if attempt == 3:
+            raise RuntimeError(f"Overpass request failed for {tile}: {'; '.join(errors)}")
+        time.sleep(attempt * 30)
     raise AssertionError("Unreachable")
 
 
@@ -131,6 +154,7 @@ def main() -> None:
     state = load_state(args.state_path, args.tile_size)
     tiles = build_tiles(args.tile_size)
     session = requests.Session()
+    session.headers["User-Agent"] = "BouleSpot-OSM-Importer/1.0 (https://loutk.github.io/BouleSpot/)"
     processed = 0
 
     while state["next_tile"] < len(tiles) and processed < args.max_tiles:
