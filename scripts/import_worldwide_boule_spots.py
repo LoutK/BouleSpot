@@ -157,8 +157,18 @@ def insert_rows(session: requests.Session, url: str, key: str, rows: list[dict[s
     }
     endpoint = f"{url.rstrip('/')}/rest/v1/user_locations?on_conflict=id"
     for offset in range(0, len(rows), 100):
-        response = session.post(endpoint, headers=headers, json=rows[offset : offset + 100], timeout=60)
-        response.raise_for_status()
+        batch = rows[offset : offset + 100]
+        for attempt in range(1, 4):
+            try:
+                response = session.post(endpoint, headers=headers, json=batch, timeout=120)
+                response.raise_for_status()
+                break
+            except requests.RequestException as error:
+                if attempt == 3:
+                    raise RuntimeError(
+                        f"Supabase insert failed after 3 attempts for {len(batch)} locations: {error}"
+                    ) from error
+                time.sleep(attempt * 10)
 
 
 def load_state(path: Path, tile_size: int) -> dict[str, Any]:
