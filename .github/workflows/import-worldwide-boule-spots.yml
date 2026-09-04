@@ -32,8 +32,12 @@ jobs:
       - name: Import strict OpenStreetMap boule pitches
         env:
           SUPABASE_URL: https://wcowekncesjckmooacyf.supabase.co
-          SUPABASE_KEY: sb_publishable_G42h5ZB_pITr3zyW-tsljg_5efcFEUS
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          if [ -z "$SUPABASE_KEY" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY repository secret."
+            exit 1
+          fi
           remaining="${{ inputs.max_tiles }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

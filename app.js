@@ -549,44 +549,36 @@ async function addUserLocation(formData) {
     return;
   }
 
-  const location = normalizeLocation({
-    id: `user-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
-    name,
-    lat,
-    lon,
-    source: "Gebruiker",
-  });
-
   if (supabaseClient) {
-    const { error } = await supabaseClient.from("user_locations").insert({
-      id: location.id,
-      name: location.name,
-      lat: location.lat,
-      lon: location.lon,
-      source: location.source,
+    const { data, error } = await supabaseClient.functions.invoke("add-user-location", {
+      body: { name, lat, lon },
     });
     if (error) {
       setStatus(`Opslaan mislukt: ${error.message}`, true);
       return;
     }
+    if (!data || typeof data.id !== "string") {
+      setStatus("Opslaan mislukt: ongeldige reactie van de server.", true);
+      return;
+    }
+    const location = normalizeLocation(data);
+
+    ensureMarker(location);
+    updateMeta();
+
+    const locationScore = Number(formData.get("newLocationRating"));
+    const atmosphereScore = Number(formData.get("newAtmosphereRating"));
+    const hasLocation = Number.isInteger(locationScore) && locationScore >= 1 && locationScore <= 5;
+    const hasAtmosphere = Number.isInteger(atmosphereScore) && atmosphereScore >= 1 && atmosphereScore <= 5;
+    if (hasLocation || hasAtmosphere) {
+      await submitRating(location.id, hasLocation ? locationScore : null, hasAtmosphere ? atmosphereScore : null);
+    }
+
+    setStatus("Nieuwe locatie toegevoegd.");
+    map.setView([location.lat, location.lon], 14);
   } else {
     setStatus("Supabase niet geconfigureerd; locatie niet opgeslagen.", true);
-    return;
   }
-
-  ensureMarker(location);
-  updateMeta();
-
-  const locationScore = Number(formData.get("newLocationRating"));
-  const atmosphereScore = Number(formData.get("newAtmosphereRating"));
-  const hasLocation = Number.isInteger(locationScore) && locationScore >= 1 && locationScore <= 5;
-  const hasAtmosphere = Number.isInteger(atmosphereScore) && atmosphereScore >= 1 && atmosphereScore <= 5;
-  if (hasLocation || hasAtmosphere) {
-    await submitRating(location.id, hasLocation ? locationScore : null, hasAtmosphere ? atmosphereScore : null);
-  }
-
-  setStatus("Nieuwe locatie toegevoegd.");
-  map.setView([location.lat, location.lon], 14);
 }
 
 async function submitRating(locationId, locationScore, atmosphereScore) {
